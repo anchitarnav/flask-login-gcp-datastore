@@ -1,7 +1,10 @@
 __author__ = 'arnavanchit@gmail.com'
 
-# Imports from the ndb module: https://googleapis.dev/python/python-ndb/latest/index.html
+from uuid import uuid4
+from hashlib import sha256
+
 from google.cloud import ndb
+from google.cloud.ndb.context import get_context
 
 # Imports from the same module
 from flask_login_user.gcp.datastore.config import get_db_client
@@ -55,7 +58,19 @@ class User(ndb.Model):
         :param password: str
         :return: bool
         """
-        return password == self.password
+        hashed_password, salt = self.password.split(':')
+        return hashed_password == sha256(salt.encode() + password.encode()).hexdigest()
+
+    @staticmethod
+    def hash_password(password: str):
+        """
+        Join the given password with a salt and hash it
+        :param password: str: clear text password
+        :return: str: hashed password
+        """
+        salt = uuid4().hex
+        return sha256(salt.encode() + password.encode()).hexdigest() + ':' + salt
+
 
     @staticmethod
     @cached
@@ -65,5 +80,9 @@ class User(ndb.Model):
         :param user_id: str: The user ID for which the User object is required
         :return: User or None
         """
-        with get_db_client().context():
+        present_context = get_context(raise_context_error=False)
+        if present_context:
             return User.get_by_id(id=user_id)
+        else:
+            with get_db_client().context():
+                return User.get_by_id(id=user_id)
